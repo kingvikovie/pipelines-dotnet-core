@@ -1,0 +1,53 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+jobs:
+  # Job 1: Build and Test
+  - job: BuildAndTest
+    displayName: 'Build and Test ASP.NET Core Project'
+    steps:
+    - task: NuGetToolInstaller@1
+
+    - task: NuGetCommand@2
+      inputs:
+        restoreSolution: '$(solution)'
+
+    - task: VSBuild@1
+      inputs:
+        solution: '$(solution)'
+        msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:DesktopBuildPackageLocation="$(build.artifactStagingDirectory)\WebApp.zip" /p:DeployIisAppPath="Default Web Site"'
+        platform: '$(buildPlatform)'
+        configuration: '$(buildConfiguration)'
+
+    - task: VSTest@2
+      inputs:
+        platform: '$(buildPlatform)'
+        configuration: '$(buildConfiguration)'
+
+  # Job 2: Deployment
+  - job: Deploy
+    displayName: 'Deploy Web Application'
+    dependsOn: BuildAndTest  # This ensures the Deploy job only runs after BuildAndTest completes successfully
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      - task: DownloadBuildArtifacts@0
+        inputs:
+          buildType: 'current'
+          downloadType: 'specific'
+          downloadPath: '$(build.artifactStagingDirectory)'
+
+      - task: AzureWebApp@1
+        inputs:
+          azureSubscription: '<Azure-Service-Connection-Name>'
+          appName: '<Your-App-Name>'
+          package: '$(build.artifactStagingDirectory)\WebApp.zip'
+          deploymentMethod: 'zipDeploy'
